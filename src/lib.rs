@@ -1,8 +1,14 @@
+#[macro_use]
 mod utils;
 
+mod cpu;
+mod game;
+
 extern crate js_sys;
+extern crate web_sys;
 
 use wasm_bindgen::prelude::*;
+
 use std::collections::HashMap;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -11,21 +17,43 @@ use std::collections::HashMap;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-struct Register {
-    value: u8,
-}
-
-struct Cpu {
-    registers: HashMap<&str, Register>,
+#[wasm_bindgen]
+pub struct Emulator {
+    cpu: cpu::Cpu,
 }
 
 #[wasm_bindgen]
-extern {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
+impl Emulator {
+    pub fn new() -> Emulator {
+        Emulator {
+            cpu: cpu::Cpu::new(),
+        }
+    }
+
+    pub fn update(&self) {
+        // Gameboy can execute 4194304 cycles per second and
+        // we will be emulating at 60 fps. In other words, this
+        // function should be called 60 times per second as it represents
+        // a single frame update
+
+        // 4194304/60 = 66905
+        let max_cycles_per_frame = 69905;
+        let mut cycles_this_update = 0;
+
+        while cycles_this_update < max_cycles_per_frame {
+            let cycles = self.cpu.execute_op();
+            cycles_this_update += cycles;
+
+            // update_timers(cycles);
+            // update_graphics(cycles);
+            // do_interrupts();
+        }
+
+        // Frame Update
+    }
 }
 
 #[wasm_bindgen]
-pub fn console_log(s: &str) {
-    log(&s);
+pub fn create_game() -> game::Game {
+    game::Game::new()
 }
