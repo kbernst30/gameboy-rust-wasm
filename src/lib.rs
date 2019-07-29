@@ -3,6 +3,7 @@ mod utils;
 
 mod cpu;
 mod game;
+mod mmu;
 
 extern crate js_sys;
 extern crate web_sys;
@@ -24,9 +25,9 @@ pub struct Emulator {
 
 #[wasm_bindgen]
 impl Emulator {
-    pub fn new() -> Emulator {
+    pub fn new(game: game::Game) -> Emulator {
         Emulator {
-            cpu: cpu::Cpu::new(),
+            cpu: cpu::Cpu::new(game),
         }
     }
 
@@ -51,9 +52,4 @@ impl Emulator {
 
         // Frame Update
     }
-}
-
-#[wasm_bindgen]
-pub fn create_game() -> game::Game {
-    game::Game::new()
 }
