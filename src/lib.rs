@@ -31,7 +31,7 @@ impl Emulator {
         }
     }
 
-    pub fn update(&self) {
+    pub fn update(&mut self) {
         // Gameboy can execute 4194304 cycles per second and
         // we will be emulating at 60 fps. In other words, this
         // function should be called 60 times per second as it represents
@@ -45,9 +45,9 @@ impl Emulator {
             let cycles = self.cpu.execute_op();
             cycles_this_update += cycles;
 
-            // update_timers(cycles);
+            self.cpu.update_timers(&cycles);
             // update_graphics(cycles);
-            // do_interrupts();
+            self.cpu.do_interrupts();
         }
 
         // Frame Update

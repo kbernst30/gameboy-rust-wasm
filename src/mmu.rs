@@ -48,6 +48,8 @@ pub struct Mmu {
     current_ram_bank: u8,
     enable_ram: bool,
 
+    timer_counter: usize,
+
     cartridge: game::Game
 }
 
@@ -103,6 +105,7 @@ impl Mmu {
             ram_banks: [0; 0x8000],
             current_ram_bank: 0,
             enable_ram: false,
+            timer_counter: 1024, // Initial value, frequency 4096 (4194304/4096)
             cartridge: game
         }
     }
@@ -136,8 +139,8 @@ impl Mmu {
         }
     }
 
-    pub fn write_memory(&mut self, address: usize, data: u8) {
-        match address {
+    pub fn write_memory(&mut self, address: &usize, data: u8) {
+        match *address {
             // If address is in Game ROM Area, don't write, this is read-only
 			// Handle ROM banking though
             m if m < 0x8000                => self.do_handle_banking(address, data),
@@ -145,11 +148,13 @@ impl Mmu {
 
             // This is the divider register and if we try and write to this,
 			// it should reset to 0
-            0xFF04                         => self.memory[address] = 0,
+            utils::DIVIDER_REGISTER_ADDR   => self.memory[*address] = 0,
+
+            utils::TIMER_CONTROLLER_ADDR   => self.do_handle_timer_controller(data),
 
             // This is the register that holds the current scanline and if we try
 			// to write to this, it should reset to 0
-            0xFF44                         => self.memory[address] = 0,
+            0xFF44                         => self.memory[*address] = 0,
 
             // When requesting this address, a Direct Memory Access is launched
 			// which is when data is copied to Sprite RAM (FE00-FE9F). This can
@@ -167,6 +172,34 @@ impl Mmu {
         }
     }
 
+    pub fn get_clock_frequency(&self) -> u8 {
+        // Clock freq is combination of 1st and 2nd bit of timer controller
+        self.read_memory(&utils::TIMER_CONTROLLER_ADDR) & 0x3
+    }
+
+    pub fn set_clock_frequency(&mut self) {
+        let frequency = self.get_clock_frequency();
+        match frequency {
+            0 => self.timer_counter = 1024, // Freq 4096
+            1 => self.timer_counter = 16,   // Freq 4096
+            2 => self.timer_counter = 64,   // Freq 65536
+            3 => self.timer_counter = 256,  // Freq 16382
+            _ => log!("Invalid value for clock frequency {}", frequency)
+        }
+    }
+
+    pub fn decrease_timer_counter(&mut self, cycles: &usize) {
+        self.timer_counter -= cycles;
+    }
+
+    pub fn get_timer_counter(&self) -> &usize {
+        &self.timer_counter
+    }
+
+    pub fn increment_divider_register(&mut self) {
+        self.memory[utils::DIVIDER_REGISTER_ADDR] += 1;
+    }
+
     fn do_read_cartridge_data(&self, address: usize) -> u8 {
         let cartridge_address = (address - 0x4000) + ((self.current_rom_bank as usize) * 0x4000);
         self.cartridge.read_catridge_data(cartridge_address)
@@ -177,12 +210,12 @@ impl Mmu {
         self.ram_banks[resolved_address + ((self.current_ram_bank as usize) * 0x2000)]
     }
 
-    fn do_write_data(&mut self, address: usize, data: u8) {
-        self.memory[address] = data;
+    fn do_write_data(&mut self, address: &usize, data: u8) {
+        self.memory[*address] = data;
     }
 
-    fn do_handle_banking(&mut self, address: usize, data: u8) {
-        match address {
+    fn do_handle_banking(&mut self, address: &usize, data: u8) {
+        match *address {
             // If the address is between 0x0000 and 0x2000, and ROM Banking is enabled
 			// then we attempt RAM enabling
             m if m < 0x2000                => self.do_enable_ram_banking(address, data),
@@ -207,10 +240,20 @@ impl Mmu {
         }
     }
 
-    fn do_handle_ram_banks(&mut self, address: usize, data: u8) {
+    fn do_handle_ram_banks(&mut self, address: &usize, data: u8) {
         if self.enable_ram {
             let resolved_address = address - 0xA000;
             self.ram_banks[resolved_address + ((self.current_ram_bank as usize) * 0x2000)] = data;
+        }
+    }
+
+    fn do_handle_timer_controller(&mut self, data: u8) {
+        let current_frequency = self.get_clock_frequency();
+        self.memory[utils::TIMER_CONTROLLER_ADDR] = data;
+        let new_frequency = self.get_clock_frequency();
+
+        if current_frequency != new_frequency {
+            self.set_clock_frequency();
         }
     }
 
@@ -224,17 +267,18 @@ impl Mmu {
         let mut source_address = (data.checked_shl(8).unwrap_or(0)) as usize;
         for i in 0xFE00..=0xFE9F {
             let data_to_write = self.read_memory(&source_address);
-            self.write_memory(i, data_to_write);
+            self.write_memory(&i, data_to_write);
             source_address += 1;
         }
     }
 
-    fn do_echo_write(&mut self, address: usize, data: u8) {
-        self.do_write_data(address - 0x2000, data);
+    fn do_echo_write(&mut self, address: &usize, data: u8) {
+        let echo_address = *address - 0x2000;
+        self.do_write_data(&echo_address, data);
         self.do_write_data(address, data);
     }
 
-    fn do_enable_ram_banking(&mut self, address: usize, data: u8) {
+    fn do_enable_ram_banking(&mut self, address: &usize, data: u8) {
         // mbc2 says that bit 4 of the address must be 0 for RAM Banking to be enabled
         if self.mbc2 {
             // 8 == 0b1000
