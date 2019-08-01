@@ -4,6 +4,7 @@ mod utils;
 mod cpu;
 mod game;
 mod mmu;
+mod ops;
 
 extern crate js_sys;
 extern crate web_sys;
@@ -46,7 +47,7 @@ impl Emulator {
             cycles_this_update += cycles;
 
             self.cpu.update_timers(&cycles);
-            // update_graphics(cycles);
+            self.cpu.update_graphics(&cycles);
             self.cpu.do_interrupts();
         }
 

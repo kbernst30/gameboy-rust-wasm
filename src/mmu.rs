@@ -154,7 +154,7 @@ impl Mmu {
 
             // This is the register that holds the current scanline and if we try
 			// to write to this, it should reset to 0
-            0xFF44                         => self.memory[*address] = 0,
+            utils::CURRENT_SCANLINE_ADDR   => self.memory[*address] = 0,
 
             // When requesting this address, a Direct Memory Access is launched
 			// which is when data is copied to Sprite RAM (FE00-FE9F). This can
@@ -198,6 +198,14 @@ impl Mmu {
 
     pub fn increment_divider_register(&mut self) {
         self.memory[utils::DIVIDER_REGISTER_ADDR] += 1;
+    }
+
+    pub fn increment_scanline_value(&mut self) {
+        self.memory[utils::CURRENT_SCANLINE_ADDR] += 1;
+    }
+
+    pub fn reset_scanline_value(&mut self) {
+        self.memory[utils::CURRENT_SCANLINE_ADDR] = 0;
     }
 
     fn do_read_cartridge_data(&self, address: usize) -> u8 {
